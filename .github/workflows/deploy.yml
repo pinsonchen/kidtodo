@@ -43,4 +43,5 @@ jobs:
             npm install --omit=dev --silent
             pm2 restart kidtodo || pm2 start ecosystem.config.js
             pm2 save
+            sleep 3
             curl -sf http://127.0.0.1:3100/health
