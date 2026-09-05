@@ -16,7 +16,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH
+      - name: Pack source
+        run: tar --exclude='.git' --exclude='node_modules' --exclude='data' --exclude='.env' -czf /tmp/kidtodo.tar.gz .
+
+      - name: Upload to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: /tmp/kidtodo.tar.gz
+          target: /opt/kidtodo-deploy/
+          overwrite: true
+          strip_components: 1
+
+      - name: Extract and restart
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -25,7 +39,8 @@ jobs:
           script: |
             set -e
             cd /opt/kidtodo
-            git pull origin main
+            tar -xzf /opt/kidtodo-deploy/kidtodo.tar.gz
+            rm -f /opt/kidtodo-deploy/kidtodo.tar.gz
             npm install --omit=dev --silent
             pm2 restart kidtodo || pm2 start ecosystem.config.js
             pm2 save
