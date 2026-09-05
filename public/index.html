@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KidTodo - 我的每日计划</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- 顶部栏 -->
+  <header id="topbar" class="hidden">
+    <div class="topbar-inner">
+      <span class="logo">🎒 KidTodo</span>
+      <div class="topbar-right">
+        <span id="userBadge" class="user-badge"></span>
+        <button id="logoutBtn" class="btn btn-ghost">退出</button>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-view="today">✅ 今日</button>
+      <button class="tab" data-view="methods">🧠 方法</button>
+      <button class="tab" data-view="stats">📊 成就</button>
+    </nav>
+  </header>
+
+  <!-- 登录/注册 -->
+  <main id="authView" class="view auth-view">
+    <div class="auth-card">
+      <h1>🎒 KidTodo</h1>
+      <p class="auth-sub">我的每日计划小助手</p>
+      <div class="seg">
+        <button id="loginSegBtn" class="seg-btn active">登录</button>
+        <button id="regSegBtn" class="seg-btn">注册新同学</button>
+      </div>
+      <form id="authForm">
+        <input type="text" id="username" placeholder="用户名（字母或数字）" autocomplete="username" required>
+        <input type="password" id="password" placeholder="密码（至少 6 位）" autocomplete="current-password" required>
+        <input type="text" id="displayName" class="hidden" placeholder="你的昵称（比如：小明明）">
+        <button type="submit" class="btn btn-primary btn-block" id="authSubmit">登录</button>
+      </form>
+      <p id="authMsg" class="msg"></p>
+    </div>
+  </main>
+
+  <!-- 今日 -->
+  <main id="todayView" class="view hidden">
+    <div class="date-banner" id="dateBanner"></div>
+    <div class="progress-card">
+      <div class="progress-text"><span id="progressLabel"></span> <span id="progressEmoji"></span></div>
+      <div class="progress-bar"><div id="progressFill"></div></div>
+    </div>
+    <ul id="taskList" class="task-list"></ul>
+    <div class="empty" id="emptyTip">今天还没有任务哦～点下面的 ➕ 添加一个吧！</div>
+    <form id="taskForm" class="task-form">
+      <input type="text" id="taskTitle" placeholder="要做什么？比如：完成数学作业" maxlength="100" required>
+      <div class="form-row">
+        <input type="text" id="taskEmoji" placeholder="😊" maxlength="4" title="选个表情">
+        <input type="time" id="taskTime" title="提醒时间">
+        <select id="taskRepeat" title="重复">
+          <option value="once">只做一次</option>
+          <option value="daily" selected>每天</option>
+          <option value="weekdays">上学日</option>
+          <option value="weekends">周末</option>
+        </select>
+      </div>
+      <input type="text" id="taskTip" placeholder="小提示（可选）：比如 先检查铅笔盒" maxlength="200">
+      <button type="submit" class="btn btn-primary btn-block">➕ 添加任务</button>
+    </form>
+  </main>
+
+  <!-- 方法 -->
+  <main id="methodsView" class="view hidden">
+    <p class="view-desc">这些都是很棒的时间管理方法，选一个喜欢的，让 KidTodo 帮你把它变成每天的任务～</p>
+    <div id="methodList"></div>
+  </main>
+
+  <!-- 成就 -->
+  <main id="statsView" class="view hidden">
+    <div class="stats-cards">
+      <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">累计打卡</div></div>
+      <div class="stat-card"><div class="stat-num" id="statActiveDays">0</div><div class="stat-label">努力过的日子</div></div>
+    </div>
+    <h3>最近 30 天</h3>
+    <div id="heatGrid" class="heat-grid"></div>
+    <p class="stats-note">每一个亮起来的格子，都是你坚持过的一天！</p>
+  </main>
+
+  <!-- 提醒弹窗 -->
+  <div id="reminderModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-emoji">⏰</div>
+      <h3>叮咚！时间到啦</h3>
+      <div id="reminderList"></div>
+      <button id="reminderOk" class="btn btn-primary btn-block">知道啦，马上去做！</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "kidtodo",
+  "version": "1.0.0",
+  "description": "小学生 Todo 提醒工具 - 任务管理、时间计划、及时提醒与打卡",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
