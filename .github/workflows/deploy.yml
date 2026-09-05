@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Pack source
-        run: tar --exclude='.git' --exclude='node_modules' --exclude='data' --exclude='.env' -czf /tmp/kidtodo.tar.gz .
+        run: tar --exclude='.git' --exclude='node_modules' --exclude='data' --exclude='.env' -czf kidtodo.tar.gz .
 
       - name: Upload to server
         uses: appleboy/scp-action@v0.1.7
@@ -25,10 +25,9 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
-          source: /tmp/kidtodo.tar.gz
+          source: kidtodo.tar.gz
           target: /opt/kidtodo-deploy/
           overwrite: true
-          strip_components: 1
 
       - name: Extract and restart
         uses: appleboy/ssh-action@v1.2.0
