@@ -1,0 +1,13 @@
+{
+  "name": "KidTodo - 我的每日计划",
+  "short_name": "KidTodo",
+  "description": "给小学生的 Todo 提醒工具：任务计划、及时提醒、打卡激励",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F0F7FF",
+  "theme_color": "#FF8A3D",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -7,7 +7,7 @@ const crypto = require('crypto');
 class Store {
   constructor(file) {
     this.file = file;
-    this.data = { users: [], tasks: [], checkins: [], reminders: [] };
+    this.data = { users: [], tasks: [], checkins: [], reminders: [], push_subscriptions: [] };
     if (fs.existsSync(file)) {
       try {
         this.data = Object.assign(this.data, JSON.parse(fs.readFileSync(file, 'utf8')));
@@ -66,6 +66,35 @@ class Store {
   setUserMethod(id, method) {
     const u = this.findUserById(id);
     if (u) { u.active_method = method; this._save(); }
+  }
+
+  // ---- 推送订阅 ----
+  savePushSubscription(user_id, subscription) {
+    const key = subscription.endpoint;
+    const exist = this.data.push_subscriptions.find(s => s.endpoint === key);
+    if (exist) {
+      exist.user_id = user_id;
+      exist.keys = subscription.keys;
+    } else {
+      this.data.push_subscriptions.push({
+        id: this.nextId(), user_id, endpoint: key,
+        keys: subscription.keys, created_at: new Date().toISOString()
+      });
+    }
+    this._save();
+  }
+
+  pushSubscriptionsOf(user_id) {
+    return this.data.push_subscriptions.filter(s => s.user_id === user_id);
+  }
+
+  allPushSubscriptions() {
+    return this.data.push_subscriptions;
+  }
+
+  removePushSubscription(endpoint) {
+    this.data.push_subscriptions = this.data.push_subscriptions.filter(s => s.endpoint !== endpoint);
+    this._save();
   }
 
   // ---- 任务 ----

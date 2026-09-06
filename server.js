@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
 const Store = require('./db');
+const webpush = require('web-push');
 
 // 加载同目录 .env（KEY=VALUE，生产密钥不入库）
 const envFile = path.join(__dirname, '.env');
@@ -27,6 +28,49 @@ app.use(express.static(path.join(__dirname, 'public')));
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'data', 'kidtodo.db.json');
 fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
 const store = new Store(DB_FILE);
+
+// ---------- Web Push（VAPID） ----------
+// 密钥通过 .env 注入：VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@pinsonbot.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+// Pushcut Webhook（可选）：到点触发 iPhone 快捷指令 → HomePod Siri 播报
+// .env 配置：PUSHCUT_URL（Pushcut 的 Webhook URL，含 secret path）
+const PUSHCUT_URL = process.env.PUSHCUT_URL || '';
+
+// 给某用户的所有浏览器订阅发推送，自动清理失效订阅
+async function sendPushToUser(user, payload) {
+  const subs = store.pushSubscriptionsOf(user.id);
+  for (const s of subs) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: s.endpoint, keys: s.keys },
+        JSON.stringify(payload)
+      );
+    } catch (e) {
+      if (e.statusCode === 404 || e.statusCode === 410) {
+        store.removePushSubscription(s.endpoint);
+      }
+    }
+  }
+}
+
+// 触发 Pushcut → HomePod Siri 播报
+async function sendPushcut(text) {
+  if (!PUSHCUT_URL) return;
+  try {
+    await fetch(PUSHCUT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+  } catch (e) {
+    console.error('pushcut error:', e.message);
+  }
+}
 
 // ---------- 时间方法模板 ----------
 // 每个模板定义一组每日时段建议，用户可一键套用后个性化调整
@@ -270,6 +314,81 @@ app.get('/api/reminders', auth, (req, res) => {
 });
 
 app.get('/health', (req, res) => res.json({ ok: true }));
+
+// ---------- Web Push ----------
+app.get('/api/push/vapid-key', (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post('/api/push/subscribe', auth, (req, res) => {
+  const subscription = req.body && req.body.subscription;
+  if (!subscription || !subscription.endpoint || !subscription.keys) {
+    return res.status(400).json({ error: '订阅信息无效' });
+  }
+  store.savePushSubscription(req.user.id, subscription);
+  res.json({ ok: true });
+});
+
+app.post('/api/push/unsubscribe', auth, (req, res) => {
+  const endpoint = req.body && req.body.endpoint;
+  if (endpoint) store.removePushSubscription(endpoint);
+  res.json({ ok: true });
+});
+
+// 推送状态（前端设置面板用）
+app.get('/api/push/status', auth, (req, res) => {
+  res.json({
+    enabled: !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
+    subscriptions: store.pushSubscriptionsOf(req.user.id).length,
+    pushcutConfigured: !!PUSHCUT_URL
+  });
+});
+
+// ---------- 服务器端定时推送（每 30 秒扫描，页面关闭也生效） ----------
+const PUSH_SENT_KEY = 'push'; // reminders 表里区分类型
+function beijingNow() {
+  return new Date(Date.now() + 8 * 3600 * 1000);
+}
+
+async function pushSweep() {
+  try {
+    const now = beijingNow();
+    const hhmm = now.toISOString().slice(11, 16);
+    const date = now.toISOString().slice(0, 10);
+    const weekday = now.getUTCDay();
+
+    for (const user of store.data.users) {
+      const due = store.tasksOfUser(user.id).filter(t => {
+        if (!t.schedule_time || t.schedule_time > hhmm) return false;
+        if (t.repeat_type === 'weekdays' && (weekday === 0 || weekday === 6)) return false;
+        if (t.repeat_type === 'weekends' && weekday !== 0 && weekday !== 6) return false;
+        if (store.isCheckedin(t.id, date)) return false;
+        return !store.isReminded(t.id, date, hhmm);
+      });
+      if (due.length === 0) continue;
+
+      for (const t of due) store.markReminded(t.id, date, hhmm);
+      const titles = due.map(t => `${t.emoji || '📌'} ${t.title}（${t.schedule_time}）`).join('；');
+      const body = `到时间啦：${due[0].emoji || ''}${due[0].title}，做完记得来打卡哦！`;
+
+      // 1. Web Push（有声系统通知）
+      await sendPushToUser(user, {
+        title: '⏰ KidTodo 到点提醒',
+        body,
+        tag: 'kidtodo-' + date + '-' + hhmm,
+        url: '/'
+      });
+
+      // 2. Pushcut → HomePod Siri 播报（已配置才触发）
+      await sendPushcut(`KidTodo 提醒：${titles}`);
+    }
+  } catch (e) {
+    console.error('push sweep error:', e);
+  }
+}
+// 首次扫一次，之后每 30 秒
+setTimeout(pushSweep, 5000);
+setInterval(pushSweep, 30000);
 
 // ---------- SPA ----------
 app.get('*', (req, res) => {

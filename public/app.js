@@ -21,6 +21,57 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// ---------- Web Push（有声系统通知，锁屏也能收到） ----------
+let swReg = null;
+
+async function initPush() {
+  if (!('serviceWorker' in navigator)) { $('pushBtn').classList.add('hidden'); return; }
+  try {
+    swReg = await navigator.serviceWorker.register('/sw.js');
+    const st = await api('/api/push/status');
+    if (!st.enabled) { $('pushBtn').classList.add('hidden'); return; }
+    updatePushBtn(swReg, st.subscriptions);
+  } catch (e) { /* 忽略 */ }
+}
+
+function updatePushBtn(reg, subCount) {
+  const btn = $('pushBtn');
+  Notification.requestPermission().then(p => {
+    // 仅更新文案，不主动弹窗；真正订阅在用户点击时
+    if (p === 'granted' && subCount > 0) {
+      btn.textContent = '🔔 已开启';
+    }
+  }).catch(() => {});
+  btn.onclick = subscribePush;
+}
+
+async function subscribePush() {
+  if (!swReg) return;
+  const btn = $('pushBtn');
+  try {
+    let perm = Notification.permission;
+    if (perm !== 'granted') perm = await Notification.requestPermission();
+    if (perm !== 'granted') { toast('需要在系统设置里允许通知哦'); return; }
+    const { publicKey } = await api('/api/push/vapid-key');
+    const sub = await swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(publicKey)
+    });
+    await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+    btn.textContent = '🔔 已开启';
+    toast('推送提醒已开启 🔔 锁屏也能收到提醒啦');
+  } catch (e) {
+    toast(e.message || '订阅失败，请重试');
+  }
+}
+
+function urlB64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
 // ---------- 鉴权视图 ----------
 async function checkAuth() {
   try {
@@ -42,6 +93,7 @@ function showApp() {
   $('topbar').classList.remove('hidden');
   $('userBadge').textContent = '你好，' + me.displayName;
   switchView('today');
+  initPush();
 }
 
 let authMode = 'login';
