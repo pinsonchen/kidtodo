@@ -45,7 +45,7 @@ const PUSHCUT_URL = process.env.PUSHCUT_URL || '';
 // .env 配置：DASHSCOPE_API_KEY（必填）、DASHSCOPE_MODEL（默认 qwen-plus）
 const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || '';
 const DASHSCOPE_MODEL = process.env.DASHSCOPE_MODEL || 'qwen-plus';
-const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const DASHSCOPE_BASE = process.env.DASHSCOPE_BASE || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
 // 给某用户的所有浏览器订阅发推送，自动清理失效订阅
 async function sendPushToUser(user, payload) {
