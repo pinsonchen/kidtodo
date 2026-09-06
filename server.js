@@ -41,6 +41,12 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 // .env 配置：PUSHCUT_URL（Pushcut 的 Webhook URL，含 secret path）
 const PUSHCUT_URL = process.env.PUSHCUT_URL || '';
 
+// 阿里云百炼（DashScope，OpenAI 兼容接口）：语音计划生成
+// .env 配置：DASHSCOPE_API_KEY（必填）、DASHSCOPE_MODEL（默认 qwen-plus）
+const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || '';
+const DASHSCOPE_MODEL = process.env.DASHSCOPE_MODEL || 'qwen-plus';
+const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+
 // 给某用户的所有浏览器订阅发推送，自动清理失效订阅
 async function sendPushToUser(user, payload) {
   const subs = store.pushSubscriptionsOf(user.id);
@@ -311,6 +317,70 @@ app.get('/api/reminders', auth, (req, res) => {
   });
   for (const t of due) store.markReminded(t.id, date, hhmm);
   res.json({ due });
+});
+
+// ---------- AI 语音计划生成（阿里云百炼） ----------
+// 输入：孩子的口述文本（来自语音输入或打字）
+// 输出：结构化任务计划（AI 解析），前端确认后逐条入库
+const PLAN_SYSTEM_PROMPT = `你是小学生时间管理助手，把孩子或家长口述的想法整理成每日任务计划。
+输出严格的 JSON，不要 markdown 代码块：{"tasks":[{"title":"任务名，简短口语化","emoji":"单个相关emoji","time":"HH:MM 或 null","repeat":"daily|weekdays|weekends|once","tip":"给小朋友的一句小提示"}]}
+规则：
+- 时间不确定就填 null；合理推测（作业类通常傍晚、阅读睡前）
+- 一次生成不超过 8 个任务，每个任务足够具体可执行
+- tip 用鼓励的语气，10 个字左右
+- 用户没说的不要编造细节`;
+
+app.post('/api/ai/plan', auth, async (req, res) => {
+  if (!DASHSCOPE_API_KEY) {
+    return res.status(503).json({ error: 'AI 功能未配置，请在服务器 .env 设置 DASHSCOPE_API_KEY' });
+  }
+  const { text } = req.body || {};
+  const input = String(text || '').trim().slice(0, 800);
+  if (!input) return res.status(400).json({ error: '说点什么吧，比如：我要每天读半小时书，周五要交手抄报' });
+  try {
+    const r = await fetch(`${DASHSCOPE_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DASHSCOPE_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: DASHSCOPE_MODEL,
+        messages: [
+          { role: 'system', content: PLAN_SYSTEM_PROMPT },
+          { role: 'user', content: input }
+        ],
+        temperature: 0.4
+      })
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      console.error('dashscope error:', r.status, t.slice(0, 300));
+      return res.status(502).json({ error: 'AI 服务暂时不可用，稍后再试' });
+    }
+    const data = await r.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const jsonStr = content.replace(/```json?|```/g, '').trim();
+    const m = jsonStr.match(/\{[\s\S]*\}/);
+    if (!m) return res.status(502).json({ error: 'AI 返回格式异常，请重试' });
+    const plan = JSON.parse(m[0]);
+    // 清洗：仅保留合法字段
+    const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+    const tasks = (plan.tasks || [])
+      .filter(t => t && t.title)
+      .slice(0, 8)
+      .map(t => ({
+        title: String(t.title).slice(0, 100),
+        emoji: String(t.emoji || '').slice(0, 8) || null,
+        time: t.time && timeRe.test(t.time) ? t.time : null,
+        repeat: ['daily', 'weekdays', 'weekends', 'once'].includes(t.repeat) ? t.repeat : 'daily',
+        tip: String(t.tip || '').slice(0, 200) || null
+      }));
+    res.json({ ok: true, tasks });
+  } catch (e) {
+    console.error('ai plan error:', e.message);
+    res.status(502).json({ error: 'AI 服务暂时不可用，稍后再试' });
+  }
 });
 
 app.get('/health', (req, res) => res.json({ ok: true }));

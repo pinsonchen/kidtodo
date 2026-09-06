@@ -25,6 +25,7 @@
     <nav class="tabs">
       <button class="tab active" data-view="today">✅ 今日</button>
       <button class="tab" data-view="methods">🧠 方法</button>
+      <button class="tab" data-view="ai">🎤 AI 排计划</button>
       <button class="tab" data-view="stats">📊 成就</button>
     </nav>
   </header>
@@ -89,6 +90,24 @@
     <h3>最近 30 天</h3>
     <div id="heatGrid" class="heat-grid"></div>
     <p class="stats-note">每一个亮起来的格子，都是你坚持过的一天！</p>
+  </main>
+
+  <!-- AI 语音计划 -->
+  <main id="aiView" class="view hidden">
+    <p class="view-desc">🎤 对着麦克风说出你的计划，AI 帮你变成每日任务～<br>比如：「我要每天读半小时书，放学后先写作业」</p>
+    <div class="ai-input-card">
+      <textarea id="aiText" rows="3" placeholder="点下方麦克风说话，或直接打字…"></textarea>
+      <div class="ai-actions">
+        <button type="button" id="micBtn" class="btn btn-mic">🎤 说话</button>
+        <button type="button" id="aiGenBtn" class="btn btn-primary">✨ 生成计划</button>
+      </div>
+      <div id="aiHint" class="ai-hint"></div>
+    </div>
+    <div id="aiPlanBox" class="hidden">
+      <h3 class="ai-plan-title">AI 帮你排的计划，看看满意吗？</h3>
+      <ul id="aiPlanList" class="task-list"></ul>
+      <button id="aiConfirmBtn" class="btn btn-primary btn-block">✅ 就这么定了，添加到我的计划</button>
+    </div>
   </main>
 
   <!-- 提醒弹窗 -->

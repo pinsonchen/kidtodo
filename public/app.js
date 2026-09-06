@@ -98,7 +98,7 @@ async function checkAuth() {
 function showAuth() {
   $('topbar').classList.add('hidden');
   $('authView').classList.remove('hidden');
-  ['todayView', 'methodsView', 'statsView'].forEach(v => $(v).classList.add('hidden'));
+  ['todayView', 'methodsView', 'aiView', 'statsView'].forEach(v => $(v).classList.add('hidden'));
 }
 
 function showApp() {
@@ -108,6 +108,110 @@ function showApp() {
   switchView('today');
   initPush();
 }
+
+// ---------- AI 语音计划 ----------
+let recognition = null;
+let listening = false;
+let aiPlanTasks = [];
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  recognition = new SR();
+  recognition.lang = 'zh-CN';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.onresult = e => {
+    let final = '', interim = '';
+    for (const r of e.results) {
+      if (r.isFinal) final += r[0].transcript;
+      else interim += r[0].transcript;
+    }
+    $('aiText').value = final + interim;
+  };
+  recognition.onend = () => {
+    listening = false;
+    $('micBtn').textContent = '🎤 说话';
+    $('micBtn').classList.remove('listening');
+    $('aiHint').textContent = $('aiText').value ? '说完啦，点「✨ 生成计划」吧' : '';
+  };
+  recognition.onerror = e => {
+    listening = false;
+    $('micBtn').textContent = '🎤 说话';
+    $('micBtn').classList.remove('listening');
+    $('aiHint').textContent = e.error === 'not-allowed'
+      ? '需要允许麦克风权限哦' : '没听清，再试一次？';
+  };
+}
+
+$('micBtn')?.addEventListener('click', () => {
+  if (!recognition) {
+    $('aiHint').textContent = '这个浏览器不支持语音识别，试试 Chrome，或用键盘上的麦克风听写';
+    return;
+  }
+  if (listening) { recognition.stop(); return; }
+  listening = true;
+  $('micBtn').textContent = '⏹ 停止';
+  $('micBtn').classList.add('listening');
+  $('aiHint').textContent = '我在听……';
+  recognition.start();
+});
+
+$('aiGenBtn')?.addEventListener('click', async () => {
+  const text = $('aiText').value.trim();
+  if (!text) { $('aiHint').textContent = '先说点什么或打点字吧'; return; }
+  const btn = $('aiGenBtn');
+  btn.disabled = true;
+  btn.textContent = '🤔 AI 想想…';
+  try {
+    const r = await api('/api/ai/plan', { method: 'POST', body: { text } });
+    aiPlanTasks = r.tasks;
+    if (aiPlanTasks.length === 0) { $('aiHint').textContent = 'AI 没想出任务，换个说法试试？'; return; }
+    renderAiPlan();
+  } catch (e) {
+    $('aiHint').textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ 生成计划';
+  }
+});
+
+function renderAiPlan() {
+  const REPEAT_LABEL = { once: '只做一次', daily: '每天', weekdays: '上学日', weekends: '周末' };
+  const list = $('aiPlanList');
+  list.innerHTML = '';
+  aiPlanTasks.forEach((t, i) => {
+    const li = document.createElement('li');
+    li.className = 'task-item';
+    li.innerHTML = `
+      <div class="task-body">
+        <div class="task-title">${t.emoji ? t.emoji + ' ' : ''}${esc(t.title)}</div>
+        <div class="task-meta">
+          ${t.time ? `<span>⏰ ${t.time}</span>` : ''}
+          <span>${REPEAT_LABEL[t.repeat] || ''}</span>
+        </div>
+        ${t.tip ? `<div class="task-tip">💡 ${esc(t.tip)}</div>` : ''}
+      </div>
+      <button class="del-btn" title="移除">✕</button>`;
+    li.querySelector('.del-btn').onclick = () => { aiPlanTasks.splice(i, 1); renderAiPlan(); };
+    list.appendChild(li);
+  });
+  $('aiPlanBox').classList.remove('hidden');
+}
+
+$('aiConfirmBtn')?.addEventListener('click', async () => {
+  for (const t of aiPlanTasks) {
+    await api('/api/tasks', {
+      method: 'POST',
+      body: { title: t.title, emoji: t.emoji, time: t.time, repeatType: t.repeat, tip: t.tip }
+    });
+  }
+  aiPlanTasks = [];
+  $('aiPlanBox').classList.add('hidden');
+  $('aiText').value = '';
+  $('aiHint').textContent = '';
+  toast('计划已添加 🎉 去今日看看吧');
+  switchView('today');
+});
 
 let authMode = 'login';
 function setAuthMode(mode) {
@@ -156,7 +260,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 function switchView(view) {
   currentView = view;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
-  ['todayView', 'methodsView', 'statsView'].forEach(v => $(v).classList.add('hidden'));
+  ['todayView', 'methodsView', 'aiView', 'statsView'].forEach(v => $(v).classList.add('hidden'));
   $(view + 'View').classList.remove('hidden');
   if (view === 'today') loadTasks();
   if (view === 'methods') loadMethods();

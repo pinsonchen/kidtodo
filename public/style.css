@@ -133,6 +133,26 @@ body {
 .method-tips { font-size: 13px; color: var(--muted); line-height: 1.7; margin-bottom: 12px; }
 .method-tips li { margin-left: 18px; }
 
+/* ---------- AI 语音计划 ---------- */
+.ai-input-card {
+  background: var(--card); border-radius: var(--radius); padding: 16px;
+  box-shadow: 0 2px 10px rgba(77, 159, 255, .08); margin-bottom: 16px;
+}
+#aiText {
+  width: 100%; border: 2px solid #E3EEFF; border-radius: 12px; padding: 12px 14px;
+  font-size: 15px; font-family: inherit; resize: none; outline: none; background: #FBFDFF;
+  margin-bottom: 12px;
+}
+#aiText:focus { border-color: var(--accent); }
+.ai-actions { display: flex; gap: 10px; }
+.ai-actions .btn { flex: 1; }
+.btn-mic { background: #EAF2FF; color: var(--accent); }
+.btn-mic.listening { background: #FFE8D6; color: var(--primary-dark); animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .65; } }
+.ai-hint { font-size: 13.5px; color: var(--muted); margin-top: 10px; min-height: 18px; text-align: center; }
+.ai-plan-title { font-size: 15px; margin-bottom: 10px; color: var(--text); }
+#aiPlanBox .btn-block { margin-top: 4px; }
+
 /* ---------- 成就 ---------- */
 .stats-cards { display: flex; gap: 12px; margin-bottom: 16px; }
 .stat-card { flex: 1; padding: 18px 0; text-align: center; }
