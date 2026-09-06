@@ -319,9 +319,52 @@ app.get('/api/reminders', auth, (req, res) => {
   res.json({ due });
 });
 
-// ---------- AI 语音计划生成（阿里云百炼） ----------
-// 输入：孩子的口述文本（来自语音输入或打字）
-// 输出：结构化任务计划（AI 解析），前端确认后逐条入库
+// ---------- AI 语音识别 + 计划生成（阿里云百炼） ----------
+// 语音识别：Qwen3-ASR-Flash（OpenAI 兼容，base64 音频，短语音场景低延迟）
+// 计划生成：qwen（DASHSCOPE_MODEL 可配置）
+const ASR_MODEL = process.env.DASHSCOPE_ASR_MODEL || 'qwen3-asr-flash';
+
+// 输入：前端录音的 data URL（data:audio/xxx;base64,...，≤10MB）
+app.post('/api/ai/transcribe', auth, async (req, res) => {
+  if (!DASHSCOPE_API_KEY) {
+    return res.status(503).json({ error: 'AI 功能未配置，请在服务器 .env 设置 DASHSCOPE_API_KEY' });
+  }
+  const audio = String((req.body && req.body.audio) || '');
+  if (!audio.startsWith('data:audio/') || audio.length > 14 * 1024 * 1024) {
+    return res.status(400).json({ error: '音频无效或太大（限 10MB）' });
+  }
+  try {
+    const r = await fetch(`${DASHSCOPE_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DASHSCOPE_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: ASR_MODEL,
+        messages: [{
+          role: 'user',
+          content: [{ type: 'input_audio', input_audio: { data: audio } }]
+        }],
+        stream: false,
+        asr_options: { language: 'zh' }
+      })
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      console.error('asr error:', r.status, t.slice(0, 300));
+      return res.status(502).json({ error: '语音识别服务暂时不可用' });
+    }
+    const data = await r.json();
+    const text = (data.choices?.[0]?.message?.content || '').trim();
+    if (!text) return res.status(502).json({ error: '没听清内容，靠近一点再试试' });
+    res.json({ ok: true, text });
+  } catch (e) {
+    console.error('asr error:', e.message);
+    res.status(502).json({ error: '语音识别服务暂时不可用' });
+  }
+});
+
 const PLAN_SYSTEM_PROMPT = `你是小学生时间管理助手，把孩子或家长口述的想法整理成每日任务计划。
 输出严格的 JSON，不要 markdown 代码块：{"tasks":[{"title":"任务名，简短口语化","emoji":"单个相关emoji","time":"HH:MM 或 null","repeat":"daily|weekdays|weekends|once","tip":"给小朋友的一句小提示"}]}
 规则：

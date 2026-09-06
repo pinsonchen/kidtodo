@@ -98,7 +98,7 @@ async function checkAuth() {
 function showAuth() {
   $('topbar').classList.add('hidden');
   $('authView').classList.remove('hidden');
-  ['todayView', 'methodsView', 'aiView', 'statsView'].forEach(v => $(v).classList.add('hidden'));
+  ['todayView', 'methodsView', 'statsView'].forEach(v => $(v).classList.add('hidden'));
 }
 
 function showApp() {
@@ -109,54 +109,63 @@ function showApp() {
   initPush();
 }
 
-// ---------- AI 语音计划 ----------
-let recognition = null;
-let listening = false;
+// ---------- AI 语音计划（录音 → 百炼 Qwen3-ASR 识别 → 大模型生成计划） ----------
 let aiPlanTasks = [];
+let mediaRecorder = null;
+let audioChunks = [];
 
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SR) {
-  recognition = new SR();
-  recognition.lang = 'zh-CN';
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.onresult = e => {
-    let final = '', interim = '';
-    for (const r of e.results) {
-      if (r.isFinal) final += r[0].transcript;
-      else interim += r[0].transcript;
-    }
-    $('aiText').value = final + interim;
-  };
-  recognition.onend = () => {
-    listening = false;
-    $('micBtn').textContent = '🎤 说话';
-    $('micBtn').classList.remove('listening');
-    $('aiHint').textContent = $('aiText').value ? '说完啦，点「✨ 生成计划」吧' : '';
-  };
-  recognition.onerror = e => {
-    listening = false;
-    $('micBtn').textContent = '🎤 说话';
-    $('micBtn').classList.remove('listening');
-    $('aiHint').textContent = e.error === 'not-allowed'
-      ? '需要允许麦克风权限哦' : '没听清，再试一次？';
-  };
-}
-
-$('micBtn')?.addEventListener('click', () => {
-  if (!recognition) {
-    $('aiHint').textContent = '这个浏览器不支持语音识别，试试 Chrome，或用键盘上的麦克风听写';
-    return;
-  }
-  if (listening) { recognition.stop(); return; }
-  listening = true;
-  $('micBtn').textContent = '⏹ 停止';
-  $('micBtn').classList.add('listening');
-  $('aiHint').textContent = '我在听……';
-  recognition.start();
+// 折叠卡片
+$('aiCardToggle').addEventListener('click', () => {
+  $('aiCardBody').classList.toggle('hidden');
+  $('aiCaret').textContent = $('aiCardBody').classList.contains('hidden') ? '▾' : '▴';
 });
 
-$('aiGenBtn')?.addEventListener('click', async () => {
+// 录音：MediaRecorder 采集，停止后上传服务器转写
+$('micBtn').addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = ['audio/webm', 'audio/mp4'].find(m => MediaRecorder.isTypeSupported(m)) || '';
+    mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      $('micBtn').textContent = '🎤 说话';
+      $('micBtn').classList.remove('listening');
+      const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      if (blob.size < 2000) { $('aiHint').textContent = '好像没录到声音，再试一次？'; return; }
+      $('aiHint').textContent = '识别中…';
+      $('micBtn').textContent = '⏳ 识别中';
+      try {
+        const b64 = await new Promise((ok, no) => {
+          const fr = new FileReader();
+          fr.onload = () => ok(fr.result);
+          fr.onerror = no;
+          fr.readAsDataURL(blob);
+        });
+        const r = await api('/api/ai/transcribe', { method: 'POST', body: { audio: b64 } });
+        $('aiText').value = r.text;
+        $('aiHint').textContent = '识别完成，点「✨ 生成计划」吧';
+      } catch (e) {
+        $('aiHint').textContent = e.message || '识别失败，再试一次';
+      } finally {
+        $('micBtn').textContent = '🎤 说话';
+      }
+    };
+    mediaRecorder.start();
+    $('micBtn').textContent = '⏹ 停止';
+    $('micBtn').classList.add('listening');
+    $('aiHint').textContent = '我在听……说完点停止';
+  } catch (e) {
+    $('aiHint').textContent = '需要麦克风权限，请在浏览器设置里允许';
+  }
+});
+
+$('aiGenBtn').addEventListener('click', async () => {
   const text = $('aiText').value.trim();
   if (!text) { $('aiHint').textContent = '先说点什么或打点字吧'; return; }
   const btn = $('aiGenBtn');
@@ -198,7 +207,7 @@ function renderAiPlan() {
   $('aiPlanBox').classList.remove('hidden');
 }
 
-$('aiConfirmBtn')?.addEventListener('click', async () => {
+$('aiConfirmBtn').addEventListener('click', async () => {
   for (const t of aiPlanTasks) {
     await api('/api/tasks', {
       method: 'POST',
@@ -209,8 +218,8 @@ $('aiConfirmBtn')?.addEventListener('click', async () => {
   $('aiPlanBox').classList.add('hidden');
   $('aiText').value = '';
   $('aiHint').textContent = '';
-  toast('计划已添加 🎉 去今日看看吧');
-  switchView('today');
+  toast('计划已添加 🎉');
+  loadTasks();
 });
 
 let authMode = 'login';
@@ -260,7 +269,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 function switchView(view) {
   currentView = view;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
-  ['todayView', 'methodsView', 'aiView', 'statsView'].forEach(v => $(v).classList.add('hidden'));
+  ['todayView', 'methodsView', 'statsView'].forEach(v => $(v).classList.add('hidden'));
   $(view + 'View').classList.remove('hidden');
   if (view === 'today') loadTasks();
   if (view === 'methods') loadMethods();

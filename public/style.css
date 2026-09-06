@@ -133,11 +133,19 @@ body {
 .method-tips { font-size: 13px; color: var(--muted); line-height: 1.7; margin-bottom: 12px; }
 .method-tips li { margin-left: 18px; }
 
-/* ---------- AI 语音计划 ---------- */
-.ai-input-card {
-  background: var(--card); border-radius: var(--radius); padding: 16px;
-  box-shadow: 0 2px 10px rgba(77, 159, 255, .08); margin-bottom: 16px;
+/* ---------- AI 排计划卡片 ---------- */
+.ai-card {
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: 0 2px 10px rgba(77, 159, 255, .08); margin-bottom: 16px; overflow: hidden;
 }
+.ai-card-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; cursor: pointer; user-select: none;
+}
+.ai-card-title { font-weight: 700; font-size: 15px; }
+.ai-caret { color: var(--muted); transition: transform .2s; }
+.ai-card-body { padding: 0 16px 16px; }
+.ai-card-body.hidden + * { margin-top: 0; }
 #aiText {
   width: 100%; border: 2px solid #E3EEFF; border-radius: 12px; padding: 12px 14px;
   font-size: 15px; font-family: inherit; resize: none; outline: none; background: #FBFDFF;
