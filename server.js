@@ -344,6 +344,19 @@ app.get('/api/push/status', auth, (req, res) => {
   });
 });
 
+// 测试推送
+app.post('/api/push/test', auth, async (req, res) => {
+  const subs = store.pushSubscriptionsOf(req.user.id);
+  if (subs.length === 0) return res.status(400).json({ error: '还没有订阅推送，先点「开推送」' });
+  await sendPushToUser(req.user, {
+    title: '🔔 KidTodo 测试提醒',
+    body: '收到这条说明推送正常！到点任务提醒也会这样推给你。',
+    tag: 'kidtodo-test',
+    url: '/'
+  });
+  res.json({ ok: true, sent: subs.length });
+});
+
 // ---------- 服务器端定时推送（每 30 秒扫描，页面关闭也生效） ----------
 const PUSH_SENT_KEY = 'push'; // reminders 表里区分类型
 function beijingNow() {

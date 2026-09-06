@@ -40,6 +40,8 @@ function updatePushBtn(reg, subCount) {
     // 仅更新文案，不主动弹窗；真正订阅在用户点击时
     if (p === 'granted' && subCount > 0) {
       btn.textContent = '🔔 已开启';
+      // 长按/点击弹出菜单不友好，改为双击触发测试：单击测试推送
+      btn.ondblclick = testPush;
     }
   }).catch(() => {});
   btn.onclick = subscribePush;
@@ -60,6 +62,8 @@ async function subscribePush() {
     await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
     btn.textContent = '🔔 已开启';
     toast('推送提醒已开启 🔔 锁屏也能收到提醒啦');
+    // 发一条测试推送，立刻验证
+    api('/api/push/test', { method: 'POST' }).catch(() => {});
   } catch (e) {
     toast(e.message || '订阅失败，请重试');
   }
@@ -70,6 +74,15 @@ function urlB64ToUint8Array(base64String) {
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw = atob(base64);
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function testPush() {
+  try {
+    await api('/api/push/test', { method: 'POST' });
+    toast('测试推送已发送，看看有没有收到通知');
+  } catch (e) {
+    toast(e.message || '发送失败');
+  }
 }
 
 // ---------- 鉴权视图 ----------
