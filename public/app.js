@@ -6,7 +6,7 @@ let tasks = [];
 let currentView = 'today';
 let lastReminderKey = '';
 
-const REPEAT_LABEL = { once: '只做一次', daily: '每天', weekdays: '上学日', weekends: '周末' };
+const REPEAT_LABEL = { once: '只做一次', daily: '每天', weekdays: '上学日', weekends: '周末', weekly: '每周固定' };
 const WEEK_CN = ['日', '一', '二', '三', '四', '五', '六'];
 
 // ---------- API ----------
@@ -185,10 +185,16 @@ $('aiGenBtn').addEventListener('click', async () => {
 });
 
 function renderAiPlan() {
-  const REPEAT_LABEL = { once: '只做一次', daily: '每天', weekdays: '上学日', weekends: '周末' };
+  const REPEAT_LABEL = { once: '只做一次', daily: '每天', weekdays: '上学日', weekends: '周末', weekly: '每周固定' };
   const list = $('aiPlanList');
   list.innerHTML = '';
   aiPlanTasks.forEach((t, i) => {
+    let repeatText = REPEAT_LABEL[t.repeat] || '';
+    if (t.repeat === 'weekly') {
+      const names = ['日', '一', '二', '三', '四', '五', '六'];
+      const days = Array.isArray(t.weekdaysMask) ? t.weekdaysMask : [];
+      repeatText = days.length ? '每周' + days.map(d => names[d]).join('、') : '每周';
+    }
     const li = document.createElement('li');
     li.className = 'task-item';
     li.innerHTML = `
@@ -196,7 +202,7 @@ function renderAiPlan() {
         <div class="task-title">${t.emoji ? t.emoji + ' ' : ''}${esc(t.title)}</div>
         <div class="task-meta">
           ${t.time ? `<span>⏰ ${t.time}</span>` : ''}
-          <span>${REPEAT_LABEL[t.repeat] || ''}</span>
+          <span>${repeatText}</span>
         </div>
         ${t.tip ? `<div class="task-tip">💡 ${esc(t.tip)}</div>` : ''}
       </div>
@@ -211,7 +217,10 @@ $('aiConfirmBtn').addEventListener('click', async () => {
   for (const t of aiPlanTasks) {
     await api('/api/tasks', {
       method: 'POST',
-      body: { title: t.title, emoji: t.emoji, time: t.time, repeatType: t.repeat, tip: t.tip }
+      body: {
+        title: t.title, emoji: t.emoji, time: t.time, repeatType: t.repeat, tip: t.tip,
+        weeklyDays: t.weekdaysMask
+      }
     });
   }
   aiPlanTasks = [];

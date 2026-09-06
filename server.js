@@ -245,17 +245,24 @@ app.get('/api/tasks', auth, (req, res) => {
 });
 
 app.post('/api/tasks', auth, (req, res) => {
-  const { title, emoji, time, repeatType, tip } = req.body || {};
+  const { title, emoji, time, repeatType, tip, weeklyDays } = req.body || {};
   if (!title || !String(title).trim()) return res.status(400).json({ error: '任务名称不能为空' });
   const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
   if (time && !timeRe.test(time)) return res.status(400).json({ error: '时间格式应为 HH:MM' });
-  const repeat = ['once', 'daily', 'weekdays', 'weekends'].includes(repeatType) ? repeatType : 'once';
+  const repeat = ['once', 'daily', 'weekdays', 'weekends', 'weekly'].includes(repeatType) ? repeatType : 'once';
+  let weeklyDaysNorm = null;
+  if (repeat === 'weekly' && Array.isArray(weeklyDays)) {
+    weeklyDaysNorm = weeklyDays.map(n => parseInt(n, 10)).filter(n => n >= 0 && n <= 6).slice(0, 7);
+    if (weeklyDaysNorm.length === 0) weeklyDaysNorm = null;
+  }
+  if (repeat === 'weekly' && !weeklyDaysNorm) return res.status(400).json({ error: 'weekly 任务需指定星期几' });
   const task = store.createTask({
     user_id: req.user.id,
     title: String(title).trim().slice(0, 100),
     emoji: (emoji || '').slice(0, 8) || null,
     schedule_time: time && timeRe.test(time) ? time : null,
     repeat_type: repeat,
+    weekly_days: weeklyDaysNorm,
     tip: (tip || '').slice(0, 200) || null
   });
   res.json({ ok: true, id: task.id });
@@ -309,9 +316,8 @@ app.get('/api/reminders', auth, (req, res) => {
   const date = now.toISOString().slice(0, 10);
   const weekday = now.getUTCDay(); // 0=周日
   const due = store.tasksOfUser(req.user.id).filter(t => {
+    if (!taskAppliesToday(t, weekday)) return false;
     if (!t.schedule_time || t.schedule_time > hhmm) return false;
-    if (t.repeat_type === 'weekdays' && (weekday === 0 || weekday === 6)) return false;
-    if (t.repeat_type === 'weekends' && weekday !== 0 && weekday !== 6) return false;
     if (store.isCheckedin(t.id, date)) return false;
     return !store.isReminded(t.id, date, hhmm);
   });
@@ -365,10 +371,13 @@ app.post('/api/ai/transcribe', auth, async (req, res) => {
   }
 });
 
-const PLAN_SYSTEM_PROMPT = `你是小学生时间管理助手，把孩子或家长口述的想法整理成每日任务计划。
-输出严格的 JSON，不要 markdown 代码块：{"tasks":[{"title":"任务名，简短口语化","emoji":"单个相关emoji","time":"HH:MM 或 null","repeat":"daily|weekdays|weekends|once","tip":"给小朋友的一句小提示"}]}
-规则：
-- 时间不确定就填 null；合理推测（作业类通常傍晚、阅读睡前）
+const PLAN_SYSTEM_PROMPT = `你是小学生时间管理助手，把孩子或家长口述的想法整理成任务计划。
+输出严格的 JSON，不要 markdown 代码块：{"tasks":[{"title":"任务名，简短口语化","emoji":"单个相关emoji","time":"HH:MM 或 null","repeat":"daily|weekdays|weekends|once|weekly:<N>","tip":"给小朋友的一句小提示"}]}
+repeat 规则：
+- 每天 → "daily"；只上学日 → "weekdays"；只周末 → "weekends"；仅一次 → "once"
+- 每周固定某天 → "weekly:<N>"，N 为星期几数字（0=周日,1=周一...6=周六），如每周五 → "weekly:5"，可给多个 N 如 "weekly:1,3"
+其他规则：
+- 时间不确定填 null；合理推测（作业类通常傍晚、阅读睡前）
 - 一次生成不超过 8 个任务，每个任务足够具体可执行
 - tip 用鼓励的语气，10 个字左右
 - 用户没说的不要编造细节`;
@@ -407,18 +416,31 @@ app.post('/api/ai/plan', auth, async (req, res) => {
     const m = jsonStr.match(/\{[\s\S]*\}/);
     if (!m) return res.status(502).json({ error: 'AI 返回格式异常，请重试' });
     const plan = JSON.parse(m[0]);
-    // 清洗：仅保留合法字段
+    // 清洗：仅保留合法字段；weekly:N 映射为 weekly（附 weekdays 位掩码）
     const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+    const repeatRe = /^(daily|weekdays|weekends|once|weekly)$/;
     const tasks = (plan.tasks || [])
       .filter(t => t && t.title)
       .slice(0, 8)
-      .map(t => ({
-        title: String(t.title).slice(0, 100),
-        emoji: String(t.emoji || '').slice(0, 8) || null,
-        time: t.time && timeRe.test(t.time) ? t.time : null,
-        repeat: ['daily', 'weekdays', 'weekends', 'once'].includes(t.repeat) ? t.repeat : 'daily',
-        tip: String(t.tip || '').slice(0, 200) || null
-      }));
+      .map(t => {
+        let repeat = String(t.repeat || 'daily');
+        let weekdaysMask = null;
+        const wm = repeat.match(/^weekly[:=]?\s*([\d,\s]+)$/);
+        if (wm) {
+          repeat = 'weekly';
+          const days = wm[1].split(',').map(s => parseInt(s.trim(), 10)).filter(n => n >= 0 && n <= 6);
+          weekdaysMask = days.length ? days : null;
+        }
+        if (!repeatRe.test(repeat)) repeat = 'daily';
+        return {
+          title: String(t.title).slice(0, 100),
+          emoji: String(t.emoji || '').slice(0, 8) || null,
+          time: t.time && timeRe.test(t.time) ? t.time : null,
+          repeat,
+          weekdaysMask,
+          tip: String(t.tip || '').slice(0, 200) || null
+        };
+      });
     res.json({ ok: true, tasks });
   } catch (e) {
     console.error('ai plan error:', e.message);
@@ -485,9 +507,8 @@ async function pushSweep() {
 
     for (const user of store.data.users) {
       const due = store.tasksOfUser(user.id).filter(t => {
+        if (!taskAppliesToday(t, weekday)) return false;
         if (!t.schedule_time || t.schedule_time > hhmm) return false;
-        if (t.repeat_type === 'weekdays' && (weekday === 0 || weekday === 6)) return false;
-        if (t.repeat_type === 'weekends' && weekday !== 0 && weekday !== 6) return false;
         if (store.isCheckedin(t.id, date)) return false;
         return !store.isReminded(t.id, date, hhmm);
       });
@@ -524,6 +545,20 @@ app.get('*', (req, res) => {
 function todayStr() {
   const d = new Date(Date.now() + 8 * 3600 * 1000); // 北京时间
   return d.toISOString().slice(0, 10);
+}
+
+// 任务在指定星期（0=周日）是否生效
+function taskAppliesToday(task, weekday) {
+  switch (task.repeat_type) {
+    case 'weekdays': return weekday >= 1 && weekday <= 5;
+    case 'weekends': return weekday === 0 || weekday === 6;
+    case 'weekly': {
+      const days = Array.isArray(task.weekly_days) ? task.weekly_days : [];
+      if (days.length === 0) return true; // 未指定视为每天
+      return days.includes(weekday);
+    }
+    default: return true; // daily / once
+  }
 }
 
 // 退出前确保持久化

@@ -98,11 +98,12 @@ class Store {
   }
 
   // ---- 任务 ----
-  createTask({ user_id, title, emoji, schedule_time, repeat_type, method_tag, tip }) {
+  createTask({ user_id, title, emoji, schedule_time, repeat_type, method_tag, tip, weekly_days }) {
     const task = {
       id: this.nextId(), user_id, title,
       emoji: emoji || null, schedule_time: schedule_time || null,
-      repeat_type: repeat_type || 'once', method_tag: method_tag || null,
+      repeat_type: repeat_type || 'once', weekly_days: weekly_days || null,
+      method_tag: method_tag || null,
       tip: tip || null, created_at: new Date().toISOString()
     };
     this.data.tasks.push(task);
